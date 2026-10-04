@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+admin-platform/node_modules
+# local env (values live in Vercel project settings)
+.env.local
+.env
+# build output (Vercel rebuilds via Vite)
+dist/
+admin-platform/dist/
+# vercel
+.vercel/
+# misc
+.DS_Store
+*.log

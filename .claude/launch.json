@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ekanex",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/Users/arnavsinghal/Desktop/EkaNex/serve.mjs"],
+      "port": 4178
+    },
+    {
+      "name": "ekanex-admin",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/Users/arnavsinghal/Desktop/EkaNex/admin-platform/serve.mjs"],
+      "port": 4188
+    }
+  ]
+}

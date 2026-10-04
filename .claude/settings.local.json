@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -f /tmp/ek-build.log)",
+      "Bash(npm run *)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(pkill -9 -f \"vite\")",
+      "Bash(rm -f /tmp/ek-dev.log)",
+      "Bash(pkill -9 -f \"vite\" 2>/dev/null; sleep 1 2>/dev/null; rm -f /tmp/ek-dev.log; echo \"restarting dev server on :: \\(dual-stack\\)\")",
+      "Bash(lsof -nP -iTCP:5173 -sTCP:LISTEN)",
+      "Bash(curl -s -o /dev/null -w \"[::1] -> %{http_code}\\\\n\" --max-time 4 \"http://[::1]:5173/\")",
+      "Bash(curl -s -o /dev/null -w \"127.0.0.1 -> %{http_code}\\\\n\" --max-time 4 \"http://127.0.0.1:5173/\")",
+      "Bash(ps -o pid,etime,%cpu,rss,command)",
+      "Bash(pkill -9 -f tailwindcss)",
+      "Bash(pkill -9 -f build.mjs)",
+      "Bash(pkill -9 -f \"esbuild --service\")",
+      "Bash(node_modules/.bin/tailwindcss -i src/index.css -o dist/assets/styles.css --minify)",
+      "Bash(echo \"TW_EXIT=$? CSS_BYTES=$\\(wc -c < dist/assets/styles.css 2>/dev/null\\)\")",
+      "Bash(ps -o pid,etime,%cpu,command)",
+      "Bash(node_modules/.bin/tailwindcss --config tailwind.config.cjs -i src/index.css -o dist/assets/styles.css)",
+      "Bash(node_modules/.bin/esbuild src/main.jsx --bundle --minify --format=esm --target=es2020 --jsx=automatic '--loader:.css=empty' '--define:process.env.NODE_ENV=\"production\"' '--banner:js=window.global=window;window.process=window.process||{env:{NODE_ENV:\"production\"}};' --outfile=dist/assets/app.js)",
+      "Bash(echo \"EB_EXIT=$? JS_BYTES=$\\(wc -c < dist/assets/app.js 2>/dev/null\\)\")",
+      "mcp__Claude_Preview__preview_start",
+      "WebFetch(domain:docs.google.com)",
+      "WebFetch(domain:doc-10-1o-docstext.googleusercontent.com)",
+      "Bash(node_modules/.bin/esbuild src/main.jsx --bundle --format=esm --jsx=automatic '--loader:.css=empty' --external:react --external:react-dom --external:react-dom/client --external:'react/jsx-runtime' --external:react-router-dom --external:framer-motion --external:lucide-react --external:react-helmet-async --outfile=dist/assets/app.js)",
+      "Bash(npm -v)",
+      "WebSearch",
+      "Bash(npm install *)",
+      "Bash(node -e \"console.log\\('supabase installed:', require\\('@supabase/supabase-js/package.json'\\).version\\)\")",
+      "Bash(pbcopy)",
+      "mcp__Claude_in_Chrome__javascript_tool"
+    ]
+  }
+}
