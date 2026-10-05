@@ -207,3 +207,35 @@ export async function listCompanies() {
   const { data } = await supabase.from('companies').select('*');
   return data || [];
 }
+
+/* ------------------------- admin content management ------------------------ */
+// Raw rows (all columns) for the admin editor, and create/update helpers.
+export async function adminListCompanies() {
+  const { data, error } = await supabase.from('companies').select('*').order('name');
+  if (error) return [];
+  return data || [];
+}
+export async function adminListProjects() {
+  const { data, error } = await supabase.from('projects').select('*, companies(name)').order('role_title');
+  if (error) return [];
+  return data || [];
+}
+export async function saveCompany(row) {
+  if (row.id) {
+    const { id, ...patch } = row;
+    const { error } = await supabase.from('companies').update(patch).eq('id', id);
+    return { ok: !error, error: error?.message };
+  }
+  const { data, error } = await supabase.from('companies').insert(row).select('id').single();
+  return { ok: !error, error: error?.message, id: data?.id };
+}
+export async function saveProject(row) {
+  if (row.id) {
+    const { id, companies, ...patch } = row;
+    const { error } = await supabase.from('projects').update(patch).eq('id', id);
+    return { ok: !error, error: error?.message };
+  }
+  const { companies, ...insert } = row;
+  const { data, error } = await supabase.from('projects').insert(insert).select('id').single();
+  return { ok: !error, error: error?.message, id: data?.id };
+}

@@ -89,6 +89,12 @@ export const listNotifications = (q) => store.listNotifications(q);
 export const listDispatches = () => store.listDispatches();
 export const subscribe = (cb) => store.subscribe(cb);
 
+/* ----------------------- content management (companies/projects) ----------- */
+export async function adminListCompanies() { return demoMode() ? [] : sb.adminListCompanies(); }
+export async function adminListProjects() { return demoMode() ? [] : sb.adminListProjects(); }
+export async function saveCompany(row) { return demoMode() ? { ok: false, error: 'Connect Supabase (run with env) to edit content.' } : sb.saveCompany(row); }
+export async function saveProject(row) { return demoMode() ? { ok: false, error: 'Connect Supabase (run with env) to edit content.' } : sb.saveProject(row); }
+
 /* -------------------------------- writes ----------------------------------- */
 export async function setApplicationStatus(id, status, opts) {
   if (demoMode()) return store.setStatus(id, status, opts);

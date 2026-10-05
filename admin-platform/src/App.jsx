@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { LayoutGrid, BarChart3, Bell, LogOut, Inbox, Trophy, CheckCircle2, Send } from 'lucide-react';
+import { LayoutGrid, BarChart3, Bell, LogOut, Inbox, Trophy, CheckCircle2, Send, Building2 } from 'lucide-react';
 import { LogoMark } from './components/Logo';
 import {
   isAuthed, signOut, bootstrap, ensureEvaluations, getSession,
@@ -11,6 +11,7 @@ import { useStore, timeAgo } from './components/ui';
 import AuthPage from './admin/AuthPage';
 import { ApplicationsView, AnalyticsView } from './admin/Dashboard';
 import Review from './admin/Review';
+import ContentEditor from './admin/ContentEditor';
 
 function NotifPanel({ open, onClose }) {
   if (!open) return null;
@@ -93,14 +94,14 @@ export default function App() {
         </div>
 
         <div className="mt-6 inline-flex rounded-xl bg-surface p-1">
-          {[{ k: 'applications', l: 'Applications', i: LayoutGrid }, { k: 'analytics', l: 'Analytics', i: BarChart3 }].map((t) => {
+          {[{ k: 'applications', l: 'Applications', i: LayoutGrid }, { k: 'content', l: 'Companies & Projects', i: Building2 }, { k: 'analytics', l: 'Analytics', i: BarChart3 }].map((t) => {
             const Icon = t.i;
             return <button key={t.k} onClick={() => setTab(t.k)} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${tab === t.k ? 'bg-white text-navy shadow-sm' : 'text-muted hover:text-navy'}`}><Icon className="h-4 w-4" /> {t.l}</button>;
           })}
         </div>
 
         <div className="mt-6">
-          {tab === 'applications' ? <ApplicationsView onOpen={setOpenId} /> : <AnalyticsView />}
+          {tab === 'applications' ? <ApplicationsView onOpen={setOpenId} /> : tab === 'content' ? <ContentEditor /> : <AnalyticsView />}
         </div>
       </main>
     </div>
