@@ -99,6 +99,39 @@ function projectToOpp(p) {
     deadline: p.window_label ? `Programme window · ${p.window_label}` : 'Rolling for Winter 2026',
     applicationProcess: 'Apply via EkaNex → short screening call → matched to the project → parental consent + confidentiality undertaking → start.',
     initials: monogram(name), logoFrom: g.from, logoTo: g.to,
+
+    // Rich company profile (shown only where values exist — no fabrication).
+    companyProfile: {
+      name,
+      sector: c.sector || p.sector || '',
+      description: c.description || '',
+      mission: c.mission || '',
+      website: c.website || '',
+      location: c.location || '',
+      foundedYear: c.founded_year || null,
+      employeeCount: c.employee_count || '',
+      stage: c.company_stage || '',
+      achievements: c.achievements || [],
+      verified: !!c.verified,
+    },
+    // Rich project detail.
+    problem: p.problem || '',
+    whyItMatters: p.why_it_matters || '',
+    whyStudents: p.why_students || '',
+    objectives: p.objectives || [],
+    deliverables: p.deliverables || [],
+    preferredSkills: p.preferred_skills || [],
+    durationWeeks: p.duration_weeks || null,
+    hoursPerWeek: p.hours_per_week || '',
+    teamSize: p.team_size || '',
+    mentorName: p.mentor_name || '',
+    mentorRole: p.mentor_role || '',
+    weeklyPlan: Array.isArray(p.weekly_plan) ? p.weekly_plan : [],
+    benefits: p.benefits || [],
+    learningOutcomes: p.learning_outcomes || [],
+    recommendedGrade: p.recommended_grade || '',
+    relevantSubjects: p.relevant_subjects || '',
+    teamwork: p.teamwork || '',
   };
 }
 
@@ -213,7 +246,10 @@ export async function updateMyProfile(patch) {
 
 /* ---------------------------- companies / projects ------------------------- */
 export async function listProjects() {
-  const { data } = await supabase.from('projects').select('*, companies(name, verified, sector, description)').eq('is_published', true);
+  const { data } = await supabase
+    .from('projects')
+    .select('*, companies(name, verified, sector, description, website, location, founded_year, employee_count, company_stage, achievements, mission)')
+    .eq('is_published', true);
   return (data || []).map(projectToOpp);
 }
 export async function listCompanies() {

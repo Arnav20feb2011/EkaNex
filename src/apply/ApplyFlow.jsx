@@ -21,12 +21,18 @@ import {
   LayoutDashboard,
   User,
   Clock,
+  Target,
+  Users,
+  Globe,
+  Award,
+  TrendingUp,
+  Rocket,
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { OPPORTUNITIES, WORK_TYPES, ORG_TYPES, STUDENT_YEARS, getOpportunity } from '../data/opportunities';
 import { ORG_ENQUIRY_TYPES } from '../data/site';
 import { LogoMark } from '../components/Logo';
-import { signUp, signIn, submitApplication, hasApplied, getSession, getProfile, getBrowseData } from '../lib/api';
+import { signUp, signIn, submitApplication, hasApplied, getSession, getProfile, getBrowseData, listStudentApplications } from '../lib/api';
 import { StatusBadge, EmptyState, Spinner } from '../components/ui';
 import { companyGradient, initials as monogram } from '../lib/brand';
 import { track } from '../lib/analytics';
@@ -554,129 +560,188 @@ function Discover({ onView, onApply, appliedIds }) {
 
 /* -------------------------- step 4: role details ------------------------- */
 
-function RoleDetails({ opp, onBack, onApply }) {
+/* --- RoleDetails building blocks --- */
+function RDBlock({ title, icon: Icon, children }) {
   return (
-    <div className="container-px py-10 sm:py-14">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-6 inline-flex items-center gap-1.5 text-sm font-semibold text-muted transition-colors hover:text-navy"
-      >
-        <ArrowLeft className="h-4 w-4" /> Back to roles
-      </button>
+    <section className="rounded-card border border-slate-200 bg-white p-6 shadow-card sm:p-7">
+      <h3 className="flex items-center gap-2 text-lg font-bold text-navy">{Icon && <Icon className="h-5 w-5 text-electric" />}{title}</h3>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+function RDFact({ icon: Icon, label, value }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start gap-3">
+      <Icon className="mt-0.5 h-5 w-5 shrink-0 text-electric" />
+      <div><dt className="font-semibold text-muted">{label}</dt><dd className="text-navy">{value}</dd></div>
+    </div>
+  );
+}
+function RDBullets({ items, tone = 'bg-electric' }) {
+  return (
+    <ul className="space-y-2.5">
+      {items.map((r, i) => (
+        <li key={i} className="flex gap-3 text-ink/80"><span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${tone}`} />{r}</li>
+      ))}
+    </ul>
+  );
+}
+function RDChips({ items }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((s) => <span key={s} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-navy">{s}</span>)}
+    </div>
+  );
+}
 
-      <div className="grid gap-8 lg:grid-cols-3">
-        {/* Main */}
-        <div className="lg:col-span-2">
-          <div className="flex items-center gap-4">
-            <CompanyLogo opp={opp} className="h-16 w-16 text-xl" />
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-navy">{opp.company}</h2>
-                {opp.verified && <VerifiedBadge />}
-              </div>
-              <p className="text-sm text-muted">{opp.sector}</p>
-            </div>
+function RoleDetails({ opp: rawOpp, onBack, onApply }) {
+  // Normalise so every array/field exists (a legacy/deep-linked opp may lack the
+  // rich Supabase fields — this keeps the page crash-free).
+  const opp = {
+    skills: [], preferredSkills: [], objectives: [], deliverables: [],
+    benefits: [], learningOutcomes: [], weeklyPlan: [], companyProfile: {},
+    ...rawOpp,
+  };
+  const cp = opp.companyProfile || {};
+  const email = getSession()?.email;
+  const myApp = email ? listStudentApplications(email).find((a) => a.opportunityId === opp.id) : null;
+
+  const commitment = [opp.hoursPerWeek, opp.durationWeeks ? `${opp.durationWeeks} weeks` : opp.window].filter(Boolean).join(' · ');
+  const hasCompanyFacts = cp.foundedYear || cp.employeeCount || cp.stage || cp.website || cp.location || cp.sector;
+  const hasWhoFor = opp.recommendedGrade || (opp.skills && opp.skills.length) || (opp.preferredSkills && opp.preferredSkills.length) || opp.relevantSubjects || commitment || opp.teamwork;
+  const websiteHref = cp.website ? (cp.website.startsWith('http') ? cp.website : `https://${cp.website}`) : '';
+
+  const ApplyCTA = myApp ? (
+    <div className="rounded-xl border border-forest/25 bg-forest/5 p-4 text-center">
+      <p className="flex items-center justify-center gap-1.5 font-semibold text-forest"><CheckCircle2 className="h-5 w-5" /> Application submitted</p>
+      <div className="mt-2 flex justify-center"><StatusBadge status={myApp.status} /></div>
+      <Link to="/dashboard" className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-electric hover:underline">Track in dashboard <ArrowRight className="h-4 w-4" /></Link>
+    </div>
+  ) : (
+    <button type="button" onClick={() => onApply(opp)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-electric px-6 py-3 font-semibold text-white shadow-card ring-1 ring-inset ring-white/15 transition-all hover:bg-electric-dark hover:-translate-y-0.5 hover:shadow-cardHover active:scale-[0.98]">
+      Apply now <ArrowRight className="h-4 w-4" />
+    </button>
+  );
+
+  return (
+    <div className="container-px pb-28 pt-10 sm:py-14 lg:pb-14">
+      <button type="button" onClick={onBack} className="mb-6 inline-flex items-center gap-1.5 text-sm font-semibold text-muted transition-colors hover:text-navy"><ArrowLeft className="h-4 w-4" /> Back to roles</button>
+
+      {/* Header */}
+      <div className="flex flex-wrap items-start gap-4">
+        <CompanyLogo opp={opp} className="h-16 w-16 text-xl" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-bold text-navy">{opp.company}</h2>
+            {opp.verified && <VerifiedBadge />}
+            {opp.seatStatus && <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700"><Clock className="h-3.5 w-3.5" /> {opp.seatStatus}</span>}
           </div>
+          <p className="text-sm text-muted">{opp.sector}</p>
+          <h1 className="mt-3 text-[clamp(1.6rem,3vw,2.3rem)] font-extrabold tracking-tight text-navy">{opp.roleTitle}</h1>
+          {opp.roleShort && <p className="mt-2 max-w-2xl text-lg text-ink/70">{opp.roleShort}</p>}
+        </div>
+      </div>
 
-          <h1 className="mt-6 text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight text-navy">{opp.roleTitle}</h1>
+      <div className="mt-8 grid gap-6 lg:grid-cols-3">
+        {/* Main column */}
+        <div className="space-y-6 lg:col-span-2">
+          <RDBlock title="The project" icon={Target}>
+            <div className="space-y-4 text-[15px] leading-relaxed text-ink/80">
+              {opp.roleDescription && <p>{opp.roleDescription}</p>}
+              {opp.problem && (<div><p className="font-semibold text-navy">The problem</p><p className="mt-1">{opp.problem}</p></div>)}
+              {opp.whyItMatters && (<div><p className="font-semibold text-navy">Why it matters</p><p className="mt-1">{opp.whyItMatters}</p></div>)}
+              {opp.whyStudents && (<div><p className="font-semibold text-navy">Why a student</p><p className="mt-1">{opp.whyStudents}</p></div>)}
+              {opp.objectives.length > 0 && (<div><p className="font-semibold text-navy">Objectives</p><div className="mt-2"><RDBullets items={opp.objectives} /></div></div>)}
+              {opp.deliverables.length > 0 && (<div><p className="font-semibold text-navy">Deliverables</p><div className="mt-2"><RDBullets items={opp.deliverables} tone="bg-forest" /></div></div>)}
+            </div>
+          </RDBlock>
 
-          {opp.companyDescription && <p className="mt-4 text-sm leading-relaxed text-ink/70">{opp.companyDescription}</p>}
-          <p className="mt-4 text-[17px] leading-relaxed text-ink/80">{opp.roleDescription}</p>
-
-          {(opp.responsibilities && opp.responsibilities.length > 0) && (
-            <>
-              <h3 className="mt-8 text-lg font-bold text-navy">Responsibilities</h3>
-              <ul className="mt-3 space-y-2.5">
-                {opp.responsibilities.map((r) => (
-                  <li key={r} className="flex gap-3 text-ink/80">
-                    <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-forest/10 text-forest">
-                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                    </span>
-                    {r}
+          {opp.weeklyPlan.length > 0 && (
+            <RDBlock title="What you'll work on" icon={ClipboardList}>
+              <ol className="relative space-y-4 border-l-2 border-slate-100 pl-6">
+                {opp.weeklyPlan.map((w, i) => (
+                  <li key={i} className="relative">
+                    <span className="absolute -left-[31px] top-0.5 grid h-5 w-5 place-items-center rounded-full bg-electric text-[10px] font-bold text-white">{w.week || i + 1}</span>
+                    <p className="font-semibold text-navy">{w.title || `Week ${w.week || i + 1}`}</p>
+                    {w.detail && <p className="text-sm text-ink/75">{w.detail}</p>}
                   </li>
                 ))}
-              </ul>
-            </>
+              </ol>
+            </RDBlock>
           )}
 
-          <h3 className="mt-8 text-lg font-bold text-navy">Required skills</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {opp.skills.map((s) => (
-              <span key={s} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-navy">
-                {s}
-              </span>
-            ))}
-          </div>
+          {(opp.benefits.length > 0 || opp.learningOutcomes.length > 0) && (
+            <RDBlock title="Why do this?" icon={TrendingUp}>
+              {opp.benefits.length > 0 && <RDBullets items={opp.benefits} tone="bg-electric" />}
+              {opp.learningOutcomes.length > 0 && (<div className={opp.benefits.length ? 'mt-4' : ''}><p className="font-semibold text-navy">What you'll learn</p><div className="mt-2"><RDBullets items={opp.learningOutcomes} tone="bg-accent" /></div></div>)}
+            </RDBlock>
+          )}
 
-          <h3 className="mt-8 text-lg font-bold text-navy">Application process</h3>
-          <p className="mt-3 text-[17px] leading-relaxed text-ink/80">{opp.applicationProcess}</p>
+          {hasWhoFor && (
+            <RDBlock title="Who this is for" icon={GraduationCap}>
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <RDFact icon={GraduationCap} label="Recommended grade" value={opp.recommendedGrade} />
+                <RDFact icon={Clock} label="Commitment" value={commitment} />
+                <RDFact icon={ClipboardList} label="Relevant subjects" value={opp.relevantSubjects} />
+                <RDFact icon={Users} label="Teamwork" value={opp.teamwork} />
+              </dl>
+              {opp.skills.length > 0 && (<div className="mt-5"><p className="mb-2 text-sm font-semibold text-muted">Required skills</p><RDChips items={opp.skills} /></div>)}
+              {opp.preferredSkills.length > 0 && (<div className="mt-4"><p className="mb-2 text-sm font-semibold text-muted">Preferred (nice to have)</p><RDChips items={opp.preferredSkills} /></div>)}
+            </RDBlock>
+          )}
+
+          {(cp.description || cp.mission || hasCompanyFacts || (cp.achievements && cp.achievements.length)) && (
+            <RDBlock title={`About ${opp.company}`} icon={Building2}>
+              {cp.description && <p className="text-[15px] leading-relaxed text-ink/80">{cp.description}</p>}
+              {cp.mission && (<div className="mt-4 rounded-lg bg-surface/60 p-3"><p className="text-sm font-semibold text-navy">Mission</p><p className="mt-1 text-sm text-ink/75">{cp.mission}</p></div>)}
+              {hasCompanyFacts && (
+                <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <RDFact icon={Briefcase} label="Industry" value={cp.sector} />
+                  <RDFact icon={MapPin} label="Location" value={cp.location} />
+                  <RDFact icon={CalendarClock} label="Founded" value={cp.foundedYear ? String(cp.foundedYear) : ''} />
+                  <RDFact icon={Users} label="Team size" value={cp.employeeCount} />
+                  <RDFact icon={TrendingUp} label="Stage" value={cp.stage} />
+                  {cp.website && (<div className="flex items-start gap-3"><Globe className="mt-0.5 h-5 w-5 shrink-0 text-electric" /><div><dt className="font-semibold text-muted">Website</dt><dd><a href={websiteHref} target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">{cp.website.replace(/^https?:\/\//, '')}</a></dd></div></div>)}
+                </dl>
+              )}
+              {cp.achievements && cp.achievements.length > 0 && (<div className="mt-5"><p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-navy"><Award className="h-4 w-4 text-accent-dark" /> Highlights</p><RDBullets items={cp.achievements} tone="bg-accent" /></div>)}
+            </RDBlock>
+          )}
+
+          <RDBlock title="How to apply" icon={Rocket}>
+            <p className="text-[15px] leading-relaxed text-ink/80">{opp.applicationProcess}</p>
+          </RDBlock>
         </div>
 
-        {/* Sidebar */}
+        {/* Sticky sidebar */}
         <aside className="lg:col-span-1">
-          <div className="lg:sticky lg:top-24 rounded-card border border-slate-200 bg-white p-6 shadow-card">
-            {opp.seatStatus ? (
-              <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                <Clock className="h-3.5 w-3.5" /> {opp.seatStatus}
-              </span>
-            ) : null}
-            <dl className="space-y-4 text-sm">
-              <div className="flex items-start gap-3">
-                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-electric" />
-                <div>
-                  <dt className="font-semibold text-muted">Location</dt>
-                  <dd className="text-navy">{opp.location}</dd>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Briefcase className="mt-0.5 h-5 w-5 shrink-0 text-electric" />
-                <div>
-                  <dt className="font-semibold text-muted">Work arrangement</dt>
-                  <dd className="text-navy">{opp.workDetail || opp.workType}</dd>
-                </div>
-              </div>
-              {opp.supervisor ? (
-                <div className="flex items-start gap-3">
-                  <User className="mt-0.5 h-5 w-5 shrink-0 text-electric" />
-                  <div>
-                    <dt className="font-semibold text-muted">Supervisor</dt>
-                    <dd className="text-navy">{opp.supervisor}</dd>
-                  </div>
-                </div>
-              ) : null}
-              <div className="flex items-start gap-3">
-                <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-electric" />
-                <div>
-                  <dt className="font-semibold text-muted">Dates</dt>
-                  <dd className="text-navy">{opp.window || opp.deadline}</dd>
-                  {(opp.startsOn && opp.endsOn) ? (
-                    <dd className="text-xs text-muted">{fmtDMY(opp.startsOn)} → {fmtDMY(opp.endsOn)}</dd>
-                  ) : null}
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-electric" />
-                <div>
-                  <dt className="font-semibold text-muted">Eligibility</dt>
-                  <dd className="text-navy">
-                    Grade 11–12 student in Delhi NCR · parental consent required · no prior experience needed
-                    {opp.workType === 'On-site' ? ' · on-site safety induction' : ''}
-                  </dd>
-                </div>
-              </div>
-            </dl>
-
-            <button
-              type="button"
-              onClick={() => onApply(opp)}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-electric px-6 py-3 font-semibold text-white shadow-card ring-1 ring-inset ring-white/15 transition-all hover:bg-electric-dark hover:-translate-y-0.5 hover:shadow-cardHover active:scale-[0.98]"
-            >
-              Apply now <ArrowRight className="h-4 w-4" />
-            </button>
+          <div className="space-y-4 lg:sticky lg:top-24">
+            <div className="rounded-card border border-slate-200 bg-white p-6 shadow-card">
+              {ApplyCTA}
+              <dl className="mt-6 space-y-4 text-sm">
+                <RDFact icon={MapPin} label="Location" value={opp.location} />
+                <RDFact icon={Briefcase} label="Work arrangement" value={opp.workDetail || opp.workType} />
+                <RDFact icon={Clock} label="Commitment" value={commitment} />
+                <RDFact icon={Users} label="Team size" value={opp.teamSize} />
+                {(opp.startsOn && opp.endsOn) ? (
+                  <div className="flex items-start gap-3"><CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-electric" /><div><dt className="font-semibold text-muted">Dates</dt><dd className="text-navy">{opp.window}</dd><dd className="text-xs text-muted">{fmtDMY(opp.startsOn)} → {fmtDMY(opp.endsOn)}</dd></div></div>
+                ) : <RDFact icon={CalendarClock} label="Dates" value={opp.window} />}
+                <RDFact icon={User} label="Supervisor" value={opp.supervisor} />
+                {opp.mentorName && <RDFact icon={User} label="Mentor" value={`${opp.mentorName}${opp.mentorRole ? ` · ${opp.mentorRole}` : ''}`} />}
+                <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-electric" /><div><dt className="font-semibold text-muted">Eligibility</dt><dd className="text-navy">Grade 11–12 student in Delhi NCR · parental consent required · no prior experience needed{opp.workType === 'On-site' ? ' · on-site safety induction' : ''}</dd></div></div>
+              </dl>
+            </div>
           </div>
         </aside>
       </div>
+
+      {/* Mobile sticky apply bar */}
+      {!myApp && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur lg:hidden">
+          <button type="button" onClick={() => onApply(opp)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-electric px-6 py-3 font-semibold text-white shadow-card active:scale-[0.98]">Apply now <ArrowRight className="h-4 w-4" /></button>
+        </div>
+      )}
     </div>
   );
 }
