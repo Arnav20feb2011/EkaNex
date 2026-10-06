@@ -136,9 +136,9 @@ function projectToOpp(p) {
 }
 
 const APP_SELECT_ADMIN =
-  '*, projects(*, companies(name)), ai_evaluations(*), admin_notes(*), application_status_history(*)';
+  '*, projects!project_id(*, companies(name)), ai_evaluations(*), admin_notes(*), application_status_history(*)';
 const APP_SELECT_STUDENT =
-  '*, projects(*, companies(name)), application_status_history(status, created_at)';
+  '*, projects!project_id(*, companies(name)), application_status_history(status, created_at)';
 
 /* ------------------------------- hydration --------------------------------- */
 // Return { applications, notifications } to replace the local cache. Admins get

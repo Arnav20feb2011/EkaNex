@@ -39,6 +39,24 @@ export async function bootstrap() {
   await rehydrate();
 }
 
+// Live sync: new/changed applications appear in the console without a refresh.
+// Uses Supabase Realtime for instant updates, plus a short poll as a safety net
+// (works even if the realtime publication isn't enabled). Returns an unsubscribe.
+export function startLiveSync(onChange) {
+  if (demoMode()) return () => {};
+  const refresh = async () => { await rehydrate(); try { await ensureEvaluations(); } catch {} onChange && onChange(); };
+  let channel;
+  try {
+    channel = supabase
+      .channel('admin-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => { rehydrate(); onChange && onChange(); })
+      .subscribe();
+  } catch { /* realtime optional */ }
+  const poll = setInterval(refresh, 15000); // safety net
+  return () => { clearInterval(poll); try { if (channel) supabase.removeChannel(channel); } catch {} };
+}
+
 /* ------------------------------ admin auth --------------------------------- */
 export async function adminSignUp({ name, email, password, inviteCode }) {
   if (demoMode()) {

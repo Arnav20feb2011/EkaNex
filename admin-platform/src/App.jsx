@@ -5,7 +5,7 @@ import { LayoutGrid, BarChart3, Bell, LogOut, Inbox, Trophy, CheckCircle2, Send,
 import { LogoMark } from './components/Logo';
 import {
   isAuthed, signOut, bootstrap, ensureEvaluations, getSession,
-  listNotifications, markAllNotificationsRead,
+  listNotifications, markAllNotificationsRead, startLiveSync,
 } from './lib/api';
 import { useStore, timeAgo } from './components/ui';
 import AuthPage from './admin/AuthPage';
@@ -54,8 +54,10 @@ export default function App() {
   const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
-    if (!authed) return;
-    (async () => { await bootstrap(); await ensureEvaluations(); })();
+    if (!authed) return undefined;
+    let stop;
+    (async () => { await bootstrap(); await ensureEvaluations(); stop = startLiveSync(); })();
+    return () => { if (stop) stop(); };
   }, [authed]);
 
   if (!authed) return <AuthPage onAuthed={() => setAuthed(true)} />;
