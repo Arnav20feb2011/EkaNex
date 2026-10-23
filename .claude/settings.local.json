@@ -59,7 +59,8 @@
       "Bash(git add *)",
       "Bash(git commit -q -m 'Remove demo-student preview backdoor from dashboard gate *)",
       "Bash(git push *)",
-      "Bash(git commit -q -m 'Dashboard: real sign-in page + schedule-a-call step on outcomes *)"
+      "Bash(git commit -q -m 'Dashboard: real sign-in page + schedule-a-call step on outcomes *)",
+      "Bash(git commit -q -m 'Build dedicated student + organization dashboards *)"
     ]
   }
 }

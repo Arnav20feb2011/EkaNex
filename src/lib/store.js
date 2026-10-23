@@ -17,7 +17,7 @@ const now = () => new Date().toISOString();
 const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now());
 
 function blank() {
-  return { seq: 0, applications: [], notifications: [], session: null, profiles: {} };
+  return { seq: 0, applications: [], notifications: [], session: null, profiles: {}, saved: [] };
 }
 
 function load() {
@@ -83,6 +83,38 @@ export function upsertProfile(email, patch) {
   db.profiles[k] = { ...(db.profiles[k] || {}), ...patch, email, updatedAt: now() };
   persist();
   return db.profiles[k];
+}
+
+/* --------------------------- saved opportunities --------------------------- */
+// A student's bookmarked roles (not yet applied to). Keyed by the owner email so
+// the same local store can hold more than one account in the preview. In live
+// mode this slice is replaced by the user's rows hydrated from Supabase.
+function savedKey(email) { return (email || '').toLowerCase(); }
+// A saved row matches the current user when: no email filter is applied, OR the
+// row has no owner email (live rows are already RLS-scoped to this user), OR the
+// owner email matches (demo multi-account case).
+function savedMatches(s, e) { const su = savedKey(s.userEmail); return !e || !su || su === e; }
+export function listSaved(email) {
+  const e = savedKey(email);
+  return (db.saved || []).filter((s) => savedMatches(s, e)).sort((a, b) => (a.at < b.at ? 1 : -1));
+}
+export function isSaved(email, opportunityId) {
+  const e = savedKey(email);
+  return (db.saved || []).some((s) => s.opportunityId === opportunityId && savedMatches(s, e));
+}
+export function saveOpportunity(email, opportunity) {
+  if (!opportunity?.id) return null;
+  db.saved = db.saved || [];
+  if (isSaved(email, opportunity.id)) return null;
+  const rec = { id: uid(), userEmail: savedKey(email), opportunityId: opportunity.id, snapshot: oppSnapshot(opportunity), at: now() };
+  db.saved.unshift(rec);
+  persist();
+  return rec;
+}
+export function unsaveOpportunity(email, opportunityId) {
+  const e = savedKey(email);
+  db.saved = (db.saved || []).filter((s) => !(s.opportunityId === opportunityId && (!e || savedKey(s.userEmail) === e)));
+  persist();
 }
 
 /* ------------------------------ applications -------------------------------- */
@@ -211,6 +243,17 @@ export function setStatus(id, status, { by = 'admin', note } = {}) {
   return a;
 }
 
+// Student-initiated withdraw of their own application.
+export function withdrawApplication(id) {
+  const a = getApplication(id);
+  if (!a) return null;
+  a.status = 'withdrawn';
+  a.updatedAt = now();
+  a.history.push({ status: 'withdrawn', at: now(), by: 'student', note: 'Application withdrawn by applicant.' });
+  persist();
+  return a;
+}
+
 export function addNote(id, text, author = 'Admin') {
   const a = getApplication(id);
   if (!a || !text?.trim()) return null;
@@ -295,9 +338,10 @@ export function analytics() {
 /* ------------------------- cache replacement (live) ------------------------ */
 // Replace the in-memory cache with data hydrated from Supabase. Used by api.js
 // when running against the real backend; the UI reads this cache synchronously.
-export function setData({ applications, notifications } = {}) {
+export function setData({ applications, notifications, saved } = {}) {
   if (applications) db.applications = applications;
   if (notifications) db.notifications = notifications;
+  if (saved) db.saved = saved;
   persist();
 }
 

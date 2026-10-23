@@ -27,13 +27,14 @@ import {
   Award,
   TrendingUp,
   Rocket,
+  Bookmark,
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { OPPORTUNITIES, WORK_TYPES, ORG_TYPES, STUDENT_YEARS, getOpportunity } from '../data/opportunities';
 import { ORG_ENQUIRY_TYPES } from '../data/site';
 import { LogoMark } from '../components/Logo';
-import { signUp, signIn, submitApplication, hasApplied, getSession, getProfile, getBrowseData, listStudentApplications } from '../lib/api';
-import { StatusBadge, EmptyState, Spinner } from '../components/ui';
+import { signUp, signIn, submitApplication, hasApplied, getSession, getProfile, getBrowseData, listStudentApplications, saveOpportunity, unsaveOpportunity, isOpportunitySaved } from '../lib/api';
+import { StatusBadge, EmptyState, Spinner, useStore } from '../components/ui';
 import { companyGradient, initials as monogram } from '../lib/brand';
 import { track } from '../lib/analytics';
 import CTAButton from '../components/CTAButton';
@@ -377,6 +378,33 @@ function AuthPanel({ userType, onBack, onAuthed }) {
 
 /* --------------------------- step 3: discover ---------------------------- */
 
+// Bookmark toggle — saves a role to the student's dashboard "Saved" list. Only
+// shown to a signed-in student (saving needs an account to attach to).
+function SaveButton({ opp, className = '' }) {
+  useStore();
+  const session = getSession();
+  const email = session?.email;
+  if (!email || (session.role && session.role !== 'student' && session.userType !== 'student')) return null;
+  const saved = isOpportunitySaved(email, opp.id);
+  const toggle = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (saved) unsaveOpportunity(opp.id); else saveOpportunity(opp);
+  };
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-pressed={saved}
+      aria-label={saved ? 'Remove from saved' : 'Save for later'}
+      title={saved ? 'Saved — click to remove' : 'Save for later'}
+      className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition-colors ${saved ? 'border-electric/30 bg-electric/10 text-electric' : 'border-slate-200 text-slate-400 hover:border-slate-300 hover:text-navy'} ${className}`}
+    >
+      <Bookmark className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
+    </button>
+  );
+}
+
 function OpportunityCard({ opp, index, onView, onApply, applied }) {
   return (
     <motion.article
@@ -388,13 +416,14 @@ function OpportunityCard({ opp, index, onView, onApply, applied }) {
     >
       <div className="flex items-center gap-3">
         <CompanyLogo opp={opp} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate font-bold text-navy">{opp.company}</h3>
             {opp.verified && <VerifiedBadge />}
           </div>
           <p className="truncate text-xs text-muted">{opp.sector}</p>
         </div>
+        <SaveButton opp={opp} />
       </div>
 
       <div className="my-4 h-px bg-slate-100" />
@@ -641,6 +670,7 @@ function RoleDetails({ opp: rawOpp, onBack, onApply }) {
           <h1 className="mt-3 text-[clamp(1.6rem,3vw,2.3rem)] font-extrabold tracking-tight text-navy">{opp.roleTitle}</h1>
           {opp.roleShort && <p className="mt-2 max-w-2xl text-lg text-ink/70">{opp.roleShort}</p>}
         </div>
+        <SaveButton opp={opp} className="h-11 w-11" />
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">

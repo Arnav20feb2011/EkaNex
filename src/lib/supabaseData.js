@@ -162,7 +162,14 @@ export async function hydrateStudent() {
   const id = await uid();
   const { data: notifs } = await supabase.from('notifications').select('*').eq('scope', 'student').eq('user_id', id).order('created_at', { ascending: false });
   const notifications = (notifs || []).map((n) => ({ id: n.id, scope: n.scope, forEmail: n.user_id, type: n.type, title: n.title, body: n.body, applicationId: n.application_id, read: n.read, at: n.created_at }));
-  return { applications, notifications };
+  // Saved opportunities (bookmarks). Table may not exist yet on older DBs — the
+  // dashboard still works, it just won't have server-synced saves until 0009 runs.
+  let saved = [];
+  try {
+    const { data: rows } = await supabase.from('saved_opportunities').select('*').eq('user_id', id).order('created_at', { ascending: false });
+    saved = (rows || []).map((r) => ({ id: r.id, userEmail: null, opportunityId: r.opportunity_id, snapshot: r.snapshot || null, at: r.created_at }));
+  } catch { /* table missing — ignore */ }
+  return { applications, notifications, saved };
 }
 
 /* --------------------------------- writes ---------------------------------- */
@@ -190,6 +197,37 @@ export async function createApplication({ project, opportunity, details }) {
 export async function setStatus(appId, status) {
   // Status history + student notification are handled by a DB trigger.
   const { error } = await supabase.from('applications').update({ status, updated_at: new Date().toISOString() }).eq('id', appId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+// Student-initiated withdraw (RLS lets a student update their OWN row only to
+// 'withdrawn' — see 0009_dashboard.sql).
+export async function withdrawApplication(appId) {
+  const id = await uid();
+  const { error } = await supabase.from('applications').update({ status: 'withdrawn', updated_at: new Date().toISOString() }).eq('id', appId).eq('applicant_id', id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/* --------------------------- saved opportunities --------------------------- */
+export async function saveOpportunity(opportunity) {
+  const id = await uid();
+  if (!id || !opportunity?.id) return { ok: false, error: 'Not signed in.' };
+  const snapshot = {
+    id: opportunity.id, company: opportunity.company, roleTitle: opportunity.roleTitle, sector: opportunity.sector,
+    skills: opportunity.skills, workType: opportunity.workType, location: opportunity.location,
+    initials: opportunity.initials, logoFrom: opportunity.logoFrom, logoTo: opportunity.logoTo, roleShort: opportunity.roleShort,
+  };
+  const { error } = await supabase.from('saved_opportunities')
+    .upsert({ user_id: id, opportunity_id: String(opportunity.id), snapshot }, { onConflict: 'user_id,opportunity_id' });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+export async function unsaveOpportunity(opportunityId) {
+  const id = await uid();
+  if (!id) return { ok: false };
+  const { error } = await supabase.from('saved_opportunities').delete().eq('user_id', id).eq('opportunity_id', String(opportunityId));
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
@@ -252,6 +290,22 @@ export async function listProjects() {
     .eq('is_published', true);
   return (data || []).map(projectToOpp);
 }
+/* ----------------------------- organization -------------------------------- */
+// An organization's workspace: their company, posted roles, and the applications
+// RLS lets them see (scoped to their company). Empty until an admin links the
+// account to a company (profiles.role='company' + company_id).
+export async function orgWorkspace() {
+  const prof = await myProfile();
+  const companyId = prof?.company_id || null;
+  if (!companyId) return { linked: false, company: null, projects: [], applications: [] };
+  const [{ data: comp }, { data: projs }, { data: apps }] = await Promise.all([
+    supabase.from('companies').select('*').eq('id', companyId).maybeSingle(),
+    supabase.from('projects').select('*').eq('company_id', companyId).order('role_title'),
+    supabase.from('applications').select('id, short_id, applicant_name, applicant_email, status, created_at, updated_at, project_id, role_title, company').order('created_at', { ascending: false }),
+  ]);
+  return { linked: true, company: comp || null, projects: projs || [], applications: apps || [] };
+}
+
 export async function listCompanies() {
   const { data } = await supabase.from('companies').select('*');
   return data || [];

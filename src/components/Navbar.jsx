@@ -155,6 +155,17 @@ export default function Navbar() {
                     </NavLink>
                   </li>
                 ))}
+                <li className="border-b border-white/10">
+                  <NavLink
+                    to="/dashboard"
+                    className={({ isActive }) =>
+                      `block py-4 text-lg font-semibold ${isActive ? 'text-accent' : 'text-white'}`
+                    }
+                    onClick={() => setOpen(false)}
+                  >
+                    Dashboard
+                  </NavLink>
+                </li>
               </ul>
 
               <div className="border-t border-white/10 p-5">

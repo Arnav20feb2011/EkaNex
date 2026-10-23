@@ -77,6 +77,7 @@ export function startLiveSync(onChange) {
       .channel('student-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'saved_opportunities' }, refresh)
       .subscribe();
   } catch { /* realtime optional — poll covers it */ }
   const poll = setInterval(refresh, 10000);
@@ -85,7 +86,7 @@ export function startLiveSync(onChange) {
 
 /* --------------------------------- auth ------------------------------------ */
 export async function signUp(userType, fields) {
-  store.setSession({ role: userType, email: fields.email, name: fields.name || fields.orgName, school: fields.school, year: fields.year });
+  store.setSession({ role: userType, userType, email: fields.email, name: fields.name || fields.orgName, school: fields.school, year: fields.year });
   if (fields.email) store.upsertProfile(fields.email, { role: userType, name: fields.name, school: fields.school, grade: fields.year, orgName: fields.orgName, orgType: fields.orgType });
   if (demoMode()) { await wait(500); return { ok: true, demo: true }; }
   const { email, password, name, orgName, school, year, orgType } = fields;
@@ -112,7 +113,7 @@ export async function signIn(fields) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { ok: false, error: authErrorMessage(error) };
     const prof = await sb.getMyProfile();
-    store.setSession({ role: prof?.role || 'student', email, name: prof?.name });
+    store.setSession({ role: prof?.role || 'student', userType: prof?.user_type || 'student', email, name: prof?.name });
     await rehydrate();
     return { ok: true, user: data.user };
   } catch (e) {
@@ -122,6 +123,13 @@ export async function signIn(fields) {
 
 export function getSession() { return store.getSession(); }
 export async function signOut() { store.clearSession(); setAdmin(false); if (live()) await supabase.auth.signOut(); }
+
+// Confirm the Supabase session is still valid (used to detect an expired login
+// on the protected dashboard). In demo mode there's nothing to check.
+export async function getAuthUser() {
+  if (demoMode()) return store.getSession()?.email ? { email: store.getSession().email } : null;
+  try { const { data } = await supabase.auth.getUser(); return data?.user || null; } catch { return null; }
+}
 
 /* --------------------------- admin sign-in --------------------------------- */
 // A deliberately SEPARATE admin authentication path. In live mode it is real
@@ -168,6 +176,31 @@ export const listStudentApplications = (email) => store.listStudentApplications(
 export const getStudentApplication = (id, email) => store.getStudentApplication(id, email);
 export const hasApplied = (email, oppId) => store.hasApplied(email, oppId);
 
+// Student withdraws their own application.
+export async function withdrawApplication(id) {
+  if (demoMode()) { store.withdrawApplication(id); return { ok: true, demo: true }; }
+  store.withdrawApplication(id); // optimistic
+  const res = await sb.withdrawApplication(id);
+  await rehydrate();
+  return res;
+}
+
+/* --------------------------- saved opportunities --------------------------- */
+export const listSavedOpportunities = (email) => store.listSaved(email);
+export const isOpportunitySaved = (email, oppId) => store.isSaved(email, oppId);
+export async function saveOpportunity(opportunity) {
+  const email = getSession()?.email || null;
+  store.saveOpportunity(email, opportunity); // optimistic / demo
+  if (live()) { await sb.saveOpportunity(opportunity); await rehydrate(); }
+  return { ok: true };
+}
+export async function unsaveOpportunity(opportunityId) {
+  const email = getSession()?.email || null;
+  store.unsaveOpportunity(email, opportunityId); // optimistic / demo
+  if (live()) { await sb.unsaveOpportunity(opportunityId); await rehydrate(); }
+  return { ok: true };
+}
+
 // Admin writes.
 export async function setApplicationStatus(id, status, opts) {
   if (demoMode()) return store.setStatus(id, status, opts);
@@ -206,9 +239,17 @@ export async function markAllNotificationsRead(q) {
 
 /* ------------------------------- profiles ---------------------------------- */
 export const getProfile = (email) => store.getProfile(email);
+// Columns that actually exist on public.profiles — everything else (skills,
+// interests, …) is kept in the local profile cache only, so a live update never
+// fails on an unknown column.
+const DB_PROFILE_COLS = ['name', 'school', 'grade', 'phone', 'city', 'org_name', 'org_type', 'avatar_url'];
 export async function updateProfile(email, patch) {
   store.upsertProfile(email, patch);
-  if (live()) await sb.updateMyProfile(patch);
+  if (live()) {
+    const dbPatch = {};
+    for (const k of DB_PROFILE_COLS) if (k in patch) dbPatch[k] = patch[k];
+    if (Object.keys(dbPatch).length) await sb.updateMyProfile(dbPatch);
+  }
   return { ok: true };
 }
 
@@ -231,6 +272,14 @@ export async function getBrowseData() {
   }
 }
 export function invalidateBrowseCache() { _browseCache = null; }
+
+/* ----------------------------- organization -------------------------------- */
+// Organization dashboard data. In demo mode there's no org backend, so this
+// returns an unlinked workspace (the UI shows a setup state).
+export async function getOrgWorkspace() {
+  if (demoMode()) return { linked: false, company: null, projects: [], applications: [] };
+  try { return await sb.orgWorkspace(); } catch (e) { return { linked: false, company: null, projects: [], applications: [], error: e.message }; }
+}
 
 /* ------------------------------- analytics --------------------------------- */
 export const getAnalytics = () => store.analytics();
