@@ -22,12 +22,23 @@ const Section = ({ icon: Icon, title, children, aside }) => (
     {children}
   </section>
 );
-const Field = ({ label, value, long }) => (
-  <div className={long ? 'sm:col-span-2' : ''}>
-    <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
-    <dd className={`mt-0.5 text-ink/85 ${long ? 'whitespace-pre-wrap leading-relaxed' : ''}`}>{value || <span className="text-slate-400">Not provided</span>}</dd>
-  </div>
-);
+// Render any value safely — strings, numbers, arrays, and objects like an
+// uploaded file ({name,size}) which must never be rendered as a React child.
+function display(value) {
+  if (value == null || value === '') return null;
+  if (Array.isArray(value)) return value.map(display).filter(Boolean).join(', ');
+  if (typeof value === 'object') return value.name || value.url || value.label || value.title || JSON.stringify(value);
+  return value;
+}
+const Field = ({ label, value, long }) => {
+  const v = display(value);
+  return (
+    <div className={long ? 'sm:col-span-2' : ''}>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
+      <dd className={`mt-0.5 text-ink/85 ${long ? 'whitespace-pre-wrap leading-relaxed' : ''}`}>{v || <span className="text-slate-400">Not provided</span>}</dd>
+    </div>
+  );
+};
 const Chips = ({ items }) => (
   <div className="flex flex-wrap gap-1.5">
     {(items && items.length) ? items.map((s) => <span key={s} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-sm text-navy">{s}</span>) : <span className="text-slate-400">None selected</span>}

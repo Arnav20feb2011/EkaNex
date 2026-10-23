@@ -79,7 +79,6 @@ export async function signIn(fields) {
 
 export function getSession() { return store.getSession(); }
 export async function signOut() { store.clearSession(); setAdmin(false); if (live()) await supabase.auth.signOut(); }
-export function previewAsStudent(email, name) { store.setSession({ role: 'student', email, name: name || store.getProfile(email)?.name }); }
 
 /* --------------------------- admin sign-in --------------------------------- */
 // A deliberately SEPARATE admin authentication path. In live mode it is real

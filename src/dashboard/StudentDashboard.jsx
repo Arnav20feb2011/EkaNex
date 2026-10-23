@@ -1,4 +1,3 @@
-import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
@@ -8,8 +7,8 @@ import {
 } from 'lucide-react';
 import { LogoMark } from '../components/Logo';
 import {
-  getSession, signOut, previewAsStudent, listStudentApplications, getProfile,
-  listNotifications, markAllNotificationsRead, listApplications,
+  getSession, signOut, listStudentApplications, getProfile,
+  listNotifications, markAllNotificationsRead,
 } from '../lib/api';
 import { OPPORTUNITIES } from '../data/opportunities';
 import { STUDENT_PIPELINE, statusMeta } from '../lib/status';
@@ -37,11 +36,6 @@ function profileFrom(apps) {
 /* --------------------------------- sign-in gate ---------------------------- */
 function Gate() {
   const navigate = useNavigate();
-  const demoStudents = useMemo(() => {
-    const seen = new Map();
-    listApplications().forEach((a) => { if (a.applicantEmail && !seen.has(a.applicantEmail)) seen.set(a.applicantEmail, a.applicantName); });
-    return [...seen.entries()];
-  }, []);
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-5">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
@@ -49,18 +43,6 @@ function Gate() {
         <h1 className="mt-5 text-xl font-bold text-navy">Your dashboard</h1>
         <p className="mt-1 text-sm text-muted">Sign in to track your applications, companies and interviews in one place.</p>
         <button onClick={() => navigate('/apply')} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-electric px-5 py-3 font-semibold text-white hover:bg-electric-dark">Sign in / Apply <ArrowRight className="h-4 w-4" /></button>
-        {demoStudents.length > 0 && (
-          <div className="mt-6 border-t border-slate-100 pt-5 text-left">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Preview as a demo student</p>
-            <div className="mt-2 space-y-1.5">
-              {demoStudents.map(([email, name]) => (
-                <button key={email} onClick={() => previewAsStudent(email, name)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm text-navy hover:bg-surface">
-                  <span className="font-semibold">{name}</span><ArrowRight className="h-4 w-4 text-muted" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         <Link to="/" className="mt-5 block text-xs font-semibold text-muted hover:text-navy">← Back to site</Link>
       </div>
     </div>
