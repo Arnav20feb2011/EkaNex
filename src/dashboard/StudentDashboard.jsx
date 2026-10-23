@@ -1,16 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, FileText, User, Bell, LogOut, ArrowRight, ArrowLeft, MapPin,
   CalendarCheck, CheckCircle2, Sparkles, GraduationCap, Target, Clock, Inbox, UserCheck,
+  PartyPopper, Phone,
 } from 'lucide-react';
 import { LogoMark } from '../components/Logo';
 import {
-  getSession, signOut, listStudentApplications, getProfile,
+  getSession, signOut, signIn, listStudentApplications, getProfile,
   listNotifications, markAllNotificationsRead, startLiveSync,
 } from '../lib/api';
+import { SITE } from '../data/site';
 import { OPPORTUNITIES } from '../data/opportunities';
 import { STUDENT_PIPELINE, statusMeta } from '../lib/status';
 import { StatusBadge, EmptyState, useStore, fmtDate, timeAgo } from '../components/ui';
@@ -37,14 +39,53 @@ function profileFrom(apps) {
 /* --------------------------------- sign-in gate ---------------------------- */
 function Gate() {
   const navigate = useNavigate();
+  const [v, setV] = useState({ email: '', password: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const set = (k) => (e) => setV((s) => ({ ...s, [k]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!v.email.trim() || !v.password) { setError('Enter your email and password to continue.'); return; }
+    setError('');
+    setSubmitting(true);
+    // On success, signIn() sets the session + hydrates the cache; the store event
+    // re-renders the shell (useStore) and the dashboard replaces this gate.
+    const res = await signIn({ email: v.email.trim(), password: v.password });
+    setSubmitting(false);
+    if (!res.ok) setError(res.error || 'Could not sign in. Please try again.');
+  };
+
+  const inputCls = 'mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-navy outline-none transition-colors focus:border-electric focus:ring-2 focus:ring-electric/20';
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-5">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
-        <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-electric/10 text-electric"><LayoutDashboard className="h-6 w-6" /></span>
-        <h1 className="mt-5 text-xl font-bold text-navy">Your dashboard</h1>
-        <p className="mt-1 text-sm text-muted">Sign in to track your applications, companies and interviews in one place.</p>
-        <button onClick={() => navigate('/apply')} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-electric px-5 py-3 font-semibold text-white hover:bg-electric-dark">Sign in / Apply <ArrowRight className="h-4 w-4" /></button>
-        <Link to="/" className="mt-5 block text-xs font-semibold text-muted hover:text-navy">← Back to site</Link>
+      <Helmet><title>Sign in · EkaNex Dashboard</title><meta name="robots" content="noindex" /></Helmet>
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-card">
+        <div className="text-center">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-electric/10 text-electric"><LayoutDashboard className="h-6 w-6" /></span>
+          <h1 className="mt-5 text-xl font-bold text-navy">Sign in to your dashboard</h1>
+          <p className="mt-1 text-sm text-muted">Track your applications, interviews and selected projects in one place.</p>
+        </div>
+
+        <form onSubmit={submit} noValidate className="mt-6 space-y-4">
+          <label className="block">
+            <span className="text-sm font-semibold text-navy">Email</span>
+            <input type="email" autoComplete="email" value={v.email} onChange={set('email')} placeholder="you@example.com" className={inputCls} />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-navy">Password</span>
+            <input type="password" autoComplete="current-password" value={v.password} onChange={set('password')} placeholder="••••••••" className={inputCls} />
+          </label>
+          {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600">{error}</p>}
+          <button type="submit" disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-electric px-5 py-3 font-semibold text-white transition-colors hover:bg-electric-dark disabled:opacity-60">
+            {submitting ? 'Signing in…' : <>Sign in <ArrowRight className="h-4 w-4" /></>}
+          </button>
+        </form>
+
+        <div className="mt-5 border-t border-slate-100 pt-4 text-center">
+          <p className="text-sm text-muted">New here? <button type="button" onClick={() => navigate('/apply')} className="font-semibold text-electric hover:underline">Apply to a project →</button></p>
+          <Link to="/" className="mt-3 block text-xs font-semibold text-muted hover:text-navy">← Back to site</Link>
+        </div>
       </div>
     </div>
   );
@@ -73,6 +114,55 @@ function AppCard({ a, onOpen }) {
         <div className="col-span-2"><p className="text-muted">Next step</p><p className="font-semibold text-ink">{m.next}</p></div>
       </div>
     </motion.button>
+  );
+}
+
+/* --------------------- next steps / schedule a call ------------------------- */
+// Shown on an application once the student reaches an outcome that needs a call.
+// Scheduling is coordinated through EkaNex (a pre-filled email), matching the
+// rule that all student↔company communication runs through the platform.
+function NextSteps({ a }) {
+  const opp = a.opportunity || {};
+  const CFG = {
+    selected: {
+      tone: 'emerald', Icon: PartyPopper, kind: 'kickoff',
+      title: "You're selected! 🎉",
+      body: `Congratulations — ${opp.company} selected you for ${opp.roleTitle}. The final step is your kickoff call to confirm start dates and logistics.`,
+      cta: 'Schedule your kickoff call',
+    },
+    interview: {
+      tone: 'blue', Icon: CalendarCheck, kind: 'interview',
+      title: 'Time to schedule your interview',
+      body: `${opp.company} wants to interview you for ${opp.roleTitle}. Book your screening call through EkaNex.`,
+      cta: 'Schedule your interview call',
+    },
+    shortlisted: {
+      tone: 'amber', Icon: CalendarCheck, kind: 'interview',
+      title: "You've been shortlisted",
+      body: `Great news — you're shortlisted for ${opp.roleTitle}. An interview invitation is on the way, and you can request a time now.`,
+      cta: 'Request an interview time',
+    },
+  };
+  const c = CFG[a.status];
+  if (!c) return null;
+  const subject = encodeURIComponent(`EkaNex · ${opp.roleTitle} at ${opp.company} — ${c.kind} call (${a.shortId})`);
+  const mailBody = encodeURIComponent(`Hi EkaNex team,\n\nI'd like to schedule my ${c.kind} call for ${opp.roleTitle} at ${opp.company} (ref ${a.shortId}).\n\nMy availability (please adjust):\n- \n- \n\nThank you!`);
+  const href = `mailto:${SITE.email}?subject=${subject}&body=${mailBody}`;
+  const tone = {
+    emerald: { box: 'border-emerald-200 bg-emerald-50 text-emerald-900', btn: 'bg-emerald-600 hover:bg-emerald-700' },
+    blue: { box: 'border-blue-200 bg-blue-50 text-blue-900', btn: 'bg-blue-600 hover:bg-blue-700' },
+    amber: { box: 'border-amber-200 bg-amber-50 text-amber-900', btn: 'bg-amber-500 hover:bg-amber-600' },
+  }[c.tone];
+  const Icon = c.Icon;
+  return (
+    <div className={`mt-6 rounded-xl border p-5 ${tone.box}`}>
+      <div className="flex items-center gap-2"><Icon className="h-5 w-5" /><p className="font-bold">{c.title}</p></div>
+      <p className="mt-1.5 text-sm opacity-90">{c.body}</p>
+      <a href={href} className={`mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-colors ${tone.btn}`}>
+        <Phone className="h-4 w-4" /> {c.cta}
+      </a>
+      <p className="mt-2 text-xs opacity-70">Scheduling is coordinated through EkaNex — we confirm the final time with you and {opp.company}.</p>
+    </div>
   );
 }
 
@@ -112,6 +202,8 @@ function AppDetail({ a, onBack }) {
             <p className="text-sm font-semibold text-navy">Next step</p>
             <p className="text-sm text-ink/80">{statusMeta(a.status).next}</p>
           </div>
+
+          <NextSteps a={a} />
         </div>
 
         <div className="rounded-card border border-slate-200 bg-white p-6 shadow-card">
