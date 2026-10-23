@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
@@ -8,7 +9,7 @@ import {
 import { LogoMark } from '../components/Logo';
 import {
   getSession, signOut, listStudentApplications, getProfile,
-  listNotifications, markAllNotificationsRead,
+  listNotifications, markAllNotificationsRead, startLiveSync,
 } from '../lib/api';
 import { OPPORTUNITIES } from '../data/opportunities';
 import { STUDENT_PIPELINE, statusMeta } from '../lib/status';
@@ -278,6 +279,15 @@ export default function StudentDashboard() {
   const openId = sp.get('app') || null;
   const setTab = (t) => setSp((prev) => { const p = new URLSearchParams(prev); p.set('tab', t); p.delete('app'); return p; }, { replace: true });
   const setOpenId = (id) => setSp((prev) => { const p = new URLSearchParams(prev); id ? p.set('app', id) : p.delete('app'); return p; });
+
+  // Live updates: pull admin decisions (status changes, notifications) into the
+  // dashboard in near real time while it's open. useStore() re-renders on the
+  // resulting cache change. Only runs for a signed-in student.
+  useEffect(() => {
+    if (!email) return undefined;
+    const stop = startLiveSync();
+    return () => { if (stop) stop(); };
+  }, [email]);
 
   if (!email) return <Gate />;
 

@@ -17,6 +17,19 @@ const live = () => isSupabaseConfigured && !!supabase;
 const demoMode = () => !live();
 export const isLive = () => live();
 
+// Relabel network/unreachable failures (backend paused, offline, DNS) so they
+// don't surface as a misleading "Invalid login credentials".
+const NETWORK_RE = /failed to fetch|fetch failed|networkerror|network error|load failed|err_|timed? ?out|timeout| enotfound|getaddrinfo|dns/i;
+function authErrorMessage(error) {
+  if (!error) return 'Something went wrong. Please try again.';
+  const msg = typeof error === 'string' ? error : error.message || '';
+  const status = error.status;
+  if (NETWORK_RE.test(msg) || status === 0 || status === 503 || status === 504) {
+    return "Can't reach the server right now. Please check your connection and try again in a moment.";
+  }
+  return msg || 'Something went wrong. Please try again.';
+}
+
 // Admin sign-up invite code. In demo mode it's checked here; in live mode it's
 // validated server-side by the claim_admin() SQL function (the client value is
 // only a convenience — the real secret lives in the database function).
@@ -68,17 +81,21 @@ export async function adminSignUp({ name, email, password, inviteCode }) {
     setAuthed(true);
     return { ok: true };
   }
-  const { error } = await supabase.auth.signUp({ email, password, options: { data: { user_type: 'admin', name } } });
-  if (error) return { ok: false, error: error.message };
-  // Sign in (works when email confirmation is disabled) then claim the admin
-  // role via a server-side function that validates the invite code.
-  await supabase.auth.signInWithPassword({ email, password });
-  const { error: rpcErr } = await supabase.rpc('claim_admin', { code: inviteCode });
-  if (rpcErr) return { ok: false, error: 'Account created, but admin role could not be granted: ' + rpcErr.message };
-  const role = await sb.myRole();
-  if (role !== 'admin') return { ok: false, error: 'Invalid admin invite code. Your account was created but not granted admin access.' };
-  setAuthed(true); store.setSession({ role: 'admin', email, name }); await rehydrate();
-  return { ok: true };
+  try {
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: { user_type: 'admin', name } } });
+    if (error) return { ok: false, error: authErrorMessage(error) };
+    // Sign in (works when email confirmation is disabled) then claim the admin
+    // role via a server-side function that validates the invite code.
+    await supabase.auth.signInWithPassword({ email, password });
+    const { error: rpcErr } = await supabase.rpc('claim_admin', { code: inviteCode });
+    if (rpcErr) return { ok: false, error: 'Account created, but admin role could not be granted: ' + authErrorMessage(rpcErr) };
+    const role = await sb.myRole();
+    if (role !== 'admin') return { ok: false, error: 'Invalid admin invite code. Your account was created but not granted admin access.' };
+    setAuthed(true); store.setSession({ role: 'admin', email, name }); await rehydrate();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: authErrorMessage(e) };
+  }
 }
 
 export async function adminSignIn({ email, password }) {
@@ -88,13 +105,17 @@ export async function adminSignIn({ email, password }) {
     store.setSession({ role: 'admin', email, name: a.name }); setAuthed(true);
     return { ok: true };
   }
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { ok: false, error: error.message };
-  const role = await sb.myRole();
-  if (role !== 'admin') { await supabase.auth.signOut(); return { ok: false, error: 'This account does not have admin access.' }; }
-  const p = await sb.getMyProfile();
-  setAuthed(true); store.setSession({ role: 'admin', email, name: p?.name }); await rehydrate();
-  return { ok: true };
+  try {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { ok: false, error: authErrorMessage(error) };
+    const role = await sb.myRole();
+    if (role !== 'admin') { await supabase.auth.signOut(); return { ok: false, error: 'This account does not have admin access.' }; }
+    const p = await sb.getMyProfile();
+    setAuthed(true); store.setSession({ role: 'admin', email, name: p?.name }); await rehydrate();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: authErrorMessage(e) };
+  }
 }
 
 export async function signOut() { setAuthed(false); store.clearSession(); if (live()) await supabase.auth.signOut(); }

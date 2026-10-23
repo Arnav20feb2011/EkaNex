@@ -23,6 +23,20 @@ const demoMode = () => !live();
 /** True when a real Supabase backend is wired up (vs. the offline demo cache). */
 export const isLive = () => live();
 
+// Turn a raw auth error into a message that's safe + helpful for users. Network
+// failures (backend paused/unreachable, offline, DNS) otherwise surface as a
+// misleading "Invalid login credentials", so we detect and relabel them.
+const NETWORK_RE = /failed to fetch|fetch failed|networkerror|network error|load failed|err_|timed? ?out|timeout| enotfound|getaddrinfo|dns/i;
+function authErrorMessage(error) {
+  if (!error) return 'Something went wrong. Please try again.';
+  const msg = typeof error === 'string' ? error : error.message || '';
+  const status = error.status;
+  if (NETWORK_RE.test(msg) || status === 0 || status === 503 || status === 504) {
+    return "Can't reach the server right now. Please check your connection and try again in a moment.";
+  }
+  return msg || 'Something went wrong. Please try again.';
+}
+
 const ADMIN_KEY = 'ekanex.admin';
 const ADMIN_PASSPHRASE = 'ekanex-admin';
 export function isAdmin() { try { return sessionStorage.getItem(ADMIN_KEY) === '1'; } catch { return false; } }
@@ -48,19 +62,44 @@ export async function bootstrap() {
   await rehydrate();
 }
 
+// Keep the signed-in student's dashboard in sync with the admin console in near
+// real time: when an admin changes an application's status or sends a new
+// notification, it shows up here without a manual refresh. Uses Supabase
+// Realtime when the publication is enabled, plus a short poll as a safety net
+// (RLS still guarantees the student only ever sees their OWN rows). Returns an
+// unsubscribe function. No-op in demo mode.
+export function startLiveSync(onChange) {
+  if (demoMode()) return () => {};
+  const refresh = async () => { await rehydrate(); if (onChange) onChange(); };
+  let channel;
+  try {
+    channel = supabase
+      .channel('student-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, refresh)
+      .subscribe();
+  } catch { /* realtime optional — poll covers it */ }
+  const poll = setInterval(refresh, 10000);
+  return () => { clearInterval(poll); try { if (channel) supabase.removeChannel(channel); } catch {} };
+}
+
 /* --------------------------------- auth ------------------------------------ */
 export async function signUp(userType, fields) {
   store.setSession({ role: userType, email: fields.email, name: fields.name || fields.orgName, school: fields.school, year: fields.year });
   if (fields.email) store.upsertProfile(fields.email, { role: userType, name: fields.name, school: fields.school, grade: fields.year, orgName: fields.orgName, orgType: fields.orgType });
   if (demoMode()) { await wait(500); return { ok: true, demo: true }; }
   const { email, password, name, orgName, school, year, orgType } = fields;
-  const { data, error } = await supabase.auth.signUp({
-    email, password,
-    options: { data: { user_type: userType, name: name || null, org_name: orgName || null, school: school || null, grade: year || null, org_type: orgType || null } },
-  });
-  if (error) return { ok: false, error: error.message };
-  await rehydrate();
-  return { ok: true, user: data.user };
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email, password,
+      options: { data: { user_type: userType, name: name || null, org_name: orgName || null, school: school || null, grade: year || null, org_type: orgType || null } },
+    });
+    if (error) return { ok: false, error: authErrorMessage(error) };
+    await rehydrate();
+    return { ok: true, user: data.user };
+  } catch (e) {
+    return { ok: false, error: authErrorMessage(e) };
+  }
 }
 
 export async function signIn(fields) {
@@ -69,12 +108,16 @@ export async function signIn(fields) {
     await wait(500); return { ok: true, demo: true };
   }
   const { email, password } = fields;
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { ok: false, error: error.message };
-  const prof = await sb.getMyProfile();
-  store.setSession({ role: prof?.role || 'student', email, name: prof?.name });
-  await rehydrate();
-  return { ok: true, user: data.user };
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { ok: false, error: authErrorMessage(error) };
+    const prof = await sb.getMyProfile();
+    store.setSession({ role: prof?.role || 'student', email, name: prof?.name });
+    await rehydrate();
+    return { ok: true, user: data.user };
+  } catch (e) {
+    return { ok: false, error: authErrorMessage(e) };
+  }
 }
 
 export function getSession() { return store.getSession(); }
