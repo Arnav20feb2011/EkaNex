@@ -191,13 +191,13 @@ export const isOpportunitySaved = (email, oppId) => store.isSaved(email, oppId);
 export async function saveOpportunity(opportunity) {
   const email = getSession()?.email || null;
   store.saveOpportunity(email, opportunity); // optimistic / demo
-  if (live()) { await sb.saveOpportunity(opportunity); await rehydrate(); }
+  if (live()) { const r = await sb.saveOpportunity(opportunity); if (r?.ok) await rehydrate(); }
   return { ok: true };
 }
 export async function unsaveOpportunity(opportunityId) {
   const email = getSession()?.email || null;
   store.unsaveOpportunity(email, opportunityId); // optimistic / demo
-  if (live()) { await sb.unsaveOpportunity(opportunityId); await rehydrate(); }
+  if (live()) { const r = await sb.unsaveOpportunity(opportunityId); if (r?.ok) await rehydrate(); }
   return { ok: true };
 }
 

@@ -162,13 +162,12 @@ export async function hydrateStudent() {
   const id = await uid();
   const { data: notifs } = await supabase.from('notifications').select('*').eq('scope', 'student').eq('user_id', id).order('created_at', { ascending: false });
   const notifications = (notifs || []).map((n) => ({ id: n.id, scope: n.scope, forEmail: n.user_id, type: n.type, title: n.title, body: n.body, applicationId: n.application_id, read: n.read, at: n.created_at }));
-  // Saved opportunities (bookmarks). Table may not exist yet on older DBs — the
-  // dashboard still works, it just won't have server-synced saves until 0009 runs.
-  let saved = [];
-  try {
-    const { data: rows } = await supabase.from('saved_opportunities').select('*').eq('user_id', id).order('created_at', { ascending: false });
-    saved = (rows || []).map((r) => ({ id: r.id, userEmail: null, opportunityId: r.opportunity_id, snapshot: r.snapshot || null, at: r.created_at }));
-  } catch { /* table missing — ignore */ }
+  // Saved opportunities (bookmarks). If the table doesn't exist yet (0009 not
+  // run), leave `saved` UNDEFINED so the local cache isn't overwritten — the
+  // dashboard still works with in-session saves until the migration is applied.
+  let saved;
+  const { data: rows, error: savedErr } = await supabase.from('saved_opportunities').select('*').eq('user_id', id).order('created_at', { ascending: false });
+  if (!savedErr) saved = (rows || []).map((r) => ({ id: r.id, userEmail: null, opportunityId: r.opportunity_id, snapshot: r.snapshot || null, at: r.created_at }));
   return { applications, notifications, saved };
 }
 
