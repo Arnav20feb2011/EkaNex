@@ -62,7 +62,8 @@
       "Bash(git commit -q -m 'Dashboard: real sign-in page + schedule-a-call step on outcomes *)",
       "Bash(git commit -q -m 'Build dedicated student + organization dashboards *)",
       "Bash(git commit -q -m 'Dashboard: graceful saved-opportunities fallback before migration 0009 *)",
-      "Bash(git commit -q -m 'Dashboard auth gate: add Sign Up + Forgot/Reset password *)"
+      "Bash(git commit -q -m 'Dashboard auth gate: add Sign Up + Forgot/Reset password *)",
+      "Bash(git commit -q -m 'Prevent orphaned applications; auto-link on signup + email RLS *)"
     ]
   }
 }
