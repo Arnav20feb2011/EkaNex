@@ -10,11 +10,13 @@ import {
 } from 'lucide-react';
 import { LogoMark } from '../components/Logo';
 import {
-  getSession, signOut, signIn, getAuthUser, rehydrate,
+  getSession, signOut, signIn, signUp, getAuthUser, rehydrate,
+  requestPasswordReset, completePasswordReset, onPasswordRecovery,
   listStudentApplications, listSavedOpportunities, unsaveOpportunity, withdrawApplication,
   listNotifications, markAllNotificationsRead, getProfile, updateProfile, startLiveSync,
 } from '../lib/api';
 import OrganizationDashboard from './OrganizationDashboard';
+import { STUDENT_YEARS } from '../data/opportunities';
 import { STUDENT_PIPELINE, statusMeta } from '../lib/status';
 import { StatusBadge, EmptyState, useStore, fmtDate, timeAgo } from '../components/ui';
 import { SITE } from '../data/site';
@@ -24,52 +26,140 @@ const ease = [0.22, 1, 0.36, 1];
 /* =========================================================================== */
 /*  SIGN-IN GATE (protects the dashboard)                                      */
 /* =========================================================================== */
+const gInput = 'mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-navy outline-none transition-colors focus:border-electric focus:ring-2 focus:ring-electric/20';
+
 function Gate() {
-  const navigate = useNavigate();
-  const [v, setV] = useState({ email: '', password: '' });
+  // modes: 'signin' | 'signup' | 'forgot' | 'recovery'
+  const [mode, setMode] = useState('signin');
+  const [v, setV] = useState({ email: '', password: '', name: '', school: '', year: '', password2: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const set = (k) => (e) => setV((s) => ({ ...s, [k]: e.target.value }));
+  const [notice, setNotice] = useState('');
+  const set = (k) => (e) => { setV((s) => ({ ...s, [k]: e.target.value })); setError(''); };
+  const switchMode = (m) => { setMode(m); setError(''); setNotice(''); };
+
+  // If the user arrived via a password-reset email, show the "set new password" view.
+  useEffect(() => {
+    if (/type=recovery/.test(window.location.hash) || /recovery/.test(window.location.search)) setMode('recovery');
+    const off = onPasswordRecovery(() => setMode('recovery'));
+    return off;
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!v.email.trim() || !v.password) { setError('Enter your email and password to continue.'); return; }
-    setError('');
+    setError(''); setNotice('');
+    const email = v.email.trim();
+
+    if (mode === 'forgot') {
+      if (!email) { setError('Enter your email.'); return; }
+      setSubmitting(true);
+      const res = await requestPasswordReset(email);
+      setSubmitting(false);
+      if (res.ok) setNotice('If an account exists for that email, we’ve sent a password reset link. Check your inbox (and spam).');
+      else setError(res.error || 'Could not send the reset link.');
+      return;
+    }
+
+    if (mode === 'recovery') {
+      if (!v.password || v.password.length < 6) { setError('Choose a password of at least 6 characters.'); return; }
+      if (v.password !== v.password2) { setError('Passwords don’t match.'); return; }
+      setSubmitting(true);
+      const res = await completePasswordReset(v.password);
+      setSubmitting(false);
+      if (!res.ok) setError(res.error || 'Could not update your password.');
+      // On success the session is set → the shell re-renders into the dashboard.
+      return;
+    }
+
+    if (mode === 'signup') {
+      if (!v.name.trim() || !email || !v.password) { setError('Enter your name, email and a password.'); return; }
+      if (v.password.length < 6) { setError('Choose a password of at least 6 characters.'); return; }
+      setSubmitting(true);
+      const res = await signUp('student', { name: v.name.trim(), email, password: v.password, school: v.school.trim(), year: v.year });
+      setSubmitting(false);
+      if (!res.ok) setError(res.error || 'Could not create your account.');
+      return;
+    }
+
+    // sign in
+    if (!email || !v.password) { setError('Enter your email and password to continue.'); return; }
     setSubmitting(true);
-    // On success, signIn() sets the session + hydrates the cache; the store event
-    // re-renders the shell (useStore) and the dashboard replaces this gate.
-    const res = await signIn({ email: v.email.trim(), password: v.password });
+    const res = await signIn({ email, password: v.password });
     setSubmitting(false);
     if (!res.ok) setError(res.error || 'Could not sign in. Please try again.');
   };
 
-  const inputCls = 'mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-navy outline-none transition-colors focus:border-electric focus:ring-2 focus:ring-electric/20';
+  const titles = {
+    signin: ['Sign in to your dashboard', 'Track your applications, interviews and selected projects in one place.'],
+    signup: ['Create your dashboard account', 'Sign up to apply and track everything in one place.'],
+    forgot: ['Reset your password', 'Enter your email and we’ll send you a reset link.'],
+    recovery: ['Set a new password', 'Choose a new password for your account.'],
+  }[mode];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-canvas px-5">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-5 py-10">
       <Helmet><title>Sign in · EkaNex Dashboard</title><meta name="robots" content="noindex" /></Helmet>
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease }} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-card">
         <div className="text-center">
           <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-electric/10 text-electric"><LayoutDashboard className="h-6 w-6" /></span>
-          <h1 className="mt-5 text-xl font-bold text-navy">Sign in to your dashboard</h1>
-          <p className="mt-1 text-sm text-muted">Track your applications, interviews and selected projects in one place.</p>
+          <h1 className="mt-5 text-xl font-bold text-navy">{titles[0]}</h1>
+          <p className="mt-1 text-sm text-muted">{titles[1]}</p>
         </div>
-        <form onSubmit={submit} noValidate className="mt-6 space-y-4">
-          <label className="block">
-            <span className="text-sm font-semibold text-navy">Email</span>
-            <input type="email" autoComplete="email" value={v.email} onChange={set('email')} placeholder="you@example.com" className={inputCls} />
-          </label>
-          <label className="block">
-            <span className="text-sm font-semibold text-navy">Password</span>
-            <input type="password" autoComplete="current-password" value={v.password} onChange={set('password')} placeholder="••••••••" className={inputCls} />
-          </label>
+
+        {/* Sign in / Sign up toggle */}
+        {(mode === 'signin' || mode === 'signup') && (
+          <div className="mt-6 grid grid-cols-2 gap-1 rounded-xl bg-surface p-1" role="tablist">
+            {[['signin', 'Sign In'], ['signup', 'Sign Up']].map(([m, l]) => (
+              <button key={m} type="button" onClick={() => switchMode(m)} className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${mode === m ? 'bg-white text-navy shadow-sm' : 'text-muted hover:text-navy'}`}>{l}</button>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={submit} noValidate className="mt-5 space-y-4">
+          {mode === 'signup' && (
+            <label className="block"><span className="text-sm font-semibold text-navy">Full name</span><input autoComplete="name" value={v.name} onChange={set('name')} placeholder="Your full name" className={gInput} /></label>
+          )}
+          {mode !== 'recovery' && (
+            <label className="block"><span className="text-sm font-semibold text-navy">Email</span><input type="email" autoComplete="email" value={v.email} onChange={set('email')} placeholder="you@example.com" className={gInput} /></label>
+          )}
+          {(mode === 'signin' || mode === 'signup' || mode === 'recovery') && (
+            <label className="block">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-navy">{mode === 'recovery' ? 'New password' : 'Password'}</span>
+                {mode === 'signin' && <button type="button" onClick={() => switchMode('forgot')} className="text-xs font-semibold text-electric hover:underline">Forgot password?</button>}
+              </div>
+              <input type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} value={v.password} onChange={set('password')} placeholder="••••••••" className={gInput} />
+            </label>
+          )}
+          {mode === 'recovery' && (
+            <label className="block"><span className="text-sm font-semibold text-navy">Confirm new password</span><input type="password" autoComplete="new-password" value={v.password2} onChange={set('password2')} placeholder="••••••••" className={gInput} /></label>
+          )}
+          {mode === 'signup' && (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block"><span className="text-sm font-semibold text-navy">School <span className="font-normal text-muted">(optional)</span></span><input value={v.school} onChange={set('school')} placeholder="Your school" className={gInput} /></label>
+              <label className="block"><span className="text-sm font-semibold text-navy">Grade <span className="font-normal text-muted">(optional)</span></span>
+                <select value={v.year} onChange={set('year')} className={gInput}><option value="">Select…</option>{STUDENT_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}</select>
+              </label>
+            </div>
+          )}
+
           {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600">{error}</p>}
+          {notice && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{notice}</p>}
+
           <button type="submit" disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-electric px-5 py-3 font-semibold text-white transition-colors hover:bg-electric-dark disabled:opacity-60">
-            {submitting ? 'Signing in…' : <>Sign in <ArrowRight className="h-4 w-4" /></>}
+            {submitting ? 'Please wait…' : (
+              mode === 'signup' ? <>Create account <ArrowRight className="h-4 w-4" /></>
+                : mode === 'forgot' ? 'Send reset link'
+                : mode === 'recovery' ? 'Save new password'
+                : <>Sign in <ArrowRight className="h-4 w-4" /></>
+            )}
           </button>
         </form>
+
         <div className="mt-5 border-t border-slate-100 pt-4 text-center">
-          <p className="text-sm text-muted">New here? <button type="button" onClick={() => navigate('/apply')} className="font-semibold text-electric hover:underline">Apply to a project →</button></p>
-          <Link to="/" className="mt-3 block text-xs font-semibold text-muted hover:text-navy">← Back to site</Link>
+          {mode === 'forgot' && <button type="button" onClick={() => switchMode('signin')} className="text-sm font-semibold text-electric hover:underline">← Back to sign in</button>}
+          {mode === 'recovery' && <button type="button" onClick={() => switchMode('signin')} className="text-sm font-semibold text-electric hover:underline">← Back to sign in</button>}
+          {(mode === 'signin' || mode === 'signup') && <Link to="/" className="block text-xs font-semibold text-muted hover:text-navy">← Back to site</Link>}
         </div>
       </motion.div>
     </div>

@@ -131,6 +131,39 @@ export async function getAuthUser() {
   try { const { data } = await supabase.auth.getUser(); return data?.user || null; } catch { return null; }
 }
 
+/* ---------------------------- password reset ------------------------------- */
+// Send a reset link to the email. Supabase returns success even if the address
+// isn't registered (anti-enumeration), so the UI always shows a neutral message.
+export async function requestPasswordReset(email) {
+  if (demoMode()) { await wait(400); return { ok: true, demo: true }; }
+  try {
+    const redirectTo = `${window.location.origin}/dashboard`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) return { ok: false, error: authErrorMessage(error) };
+    return { ok: true };
+  } catch (e) { return { ok: false, error: authErrorMessage(e) }; }
+}
+// Set a new password for the user who arrived via a recovery link (they have a
+// temporary recovery session).
+export async function completePasswordReset(newPassword) {
+  if (demoMode()) { await wait(400); return { ok: true, demo: true }; }
+  try {
+    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { ok: false, error: authErrorMessage(error) };
+    const prof = await sb.getMyProfile().catch(() => null);
+    const email = data?.user?.email;
+    if (email) store.setSession({ role: prof?.role || 'student', userType: prof?.user_type || 'student', email, name: prof?.name });
+    await rehydrate();
+    return { ok: true };
+  } catch (e) { return { ok: false, error: authErrorMessage(e) }; }
+}
+// Fire `cb` when Supabase detects a recovery link in the URL (PASSWORD_RECOVERY).
+export function onPasswordRecovery(cb) {
+  if (demoMode() || !supabase) return () => {};
+  const { data } = supabase.auth.onAuthStateChange((event) => { if (event === 'PASSWORD_RECOVERY') cb(); });
+  return () => { try { data?.subscription?.unsubscribe(); } catch {} };
+}
+
 /* --------------------------- admin sign-in --------------------------------- */
 // A deliberately SEPARATE admin authentication path. In live mode it is real
 // Supabase auth plus a server-side role check (profiles.role must be 'admin');
